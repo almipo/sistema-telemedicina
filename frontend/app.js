@@ -189,6 +189,17 @@ function htmlField(key, type, value = "", options = {}) {
   }
  }
 
+ if (key === "documento") {
+  input.inputMode = "numeric";
+  input.maxLength = 8;
+  input.pattern = "[0-9]{7,8}";
+  input.title = "Ingresá un DNI de 7 u 8 números, sin puntos.";
+ }
+ if (key === "matricula") {
+  input.maxLength = 25;
+  input.pattern = "[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9 ./-]{3,25}";
+  input.title = "Ingresá una matrícula de 3 a 25 caracteres.";
+ }
  input.id = id;
  input.name = key;
  input.value = value ?? "";
@@ -244,6 +255,32 @@ function formFor(kind, item, params = {}) {
         e.preventDefault();
         const data = collect(form, schema);
         Object.assign(data, params.fixed || {});
+        if (kind === "pacientes" || kind === "medicos") {
+            if (!/^\d{7,8}$/.test(data.documento || "")) {
+                inform("El documento debe contener 7 u 8 números, sin puntos.");
+                return;
+            }
+            if (kind === "medicos") {
+                data.matricula = (data.matricula || "").trim();
+                if (!/^[\p{L}\d ./-]{3,25}$/u.test(data.matricula)) {
+                    inform("La matrícula debe tener entre 3 y 25 caracteres válidos.");
+                    return;
+                }
+            }
+            // Validación preventiva; el backend también controla la unicidad.
+            const same = (arr, field) => (arr || []).some(x =>
+                String(x[field] || "").toUpperCase() === String(data[field] || "").toUpperCase()
+                && String(x.id) !== String(item?.id)
+            );
+            if (same(cache[kind], "documento")) {
+                inform("Ya existe un registro con ese documento.");
+                return;
+            }
+            if (kind === "medicos" && same(cache.medicos, "matricula")) {
+                inform("Ya existe un médico con esa matrícula.");
+                return;
+            }
+        }
         try {
             await api(conf.path + (item ? `/${item.id}` : ""), item ? "PUT" : "POST", data);
             inform("Registro guardado correctamente.");
@@ -378,7 +415,34 @@ async function loadStandard(kind, version) {
             }));
             bar.append(button("Eliminar", () => remove(kind, item.id), "danger"));
         };
-        replace("records", makeTable(data, columns[kind], actions));
+        const listado = el("div");
+        if (kind === "pacientes" || kind === "medicos") {
+            const filtro = el("input");
+            filtro.type = "search";
+            filtro.placeholder = kind === "pacientes"
+                ? "Buscar por nombre, apellido o documento"
+                : "Buscar por nombre, documento, matrícula o especialidad";
+            filtro.setAttribute("aria-label", filtro.placeholder);
+            filtro.style.width = "100%";
+            filtro.style.marginBottom = "12px";
+            const resultados = el("div");
+            const normalizar = value => String(value ?? "").normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "").toLowerCase();
+            const refrescar = () => {
+                const q = normalizar(filtro.value.trim());
+                const subset = data.filter(x => !q ||
+                    [x.nombre, x.apellido, x.documento, x.matricula, x.especialidad]
+                        .some(value => normalizar(value).includes(q)));
+                resultados.replaceChildren(makeTable(subset, columns[kind], actions));
+                $("record-count").textContent = `${subset.length} de ${data.length} registros`;
+            };
+            filtro.addEventListener("input", refrescar);
+            listado.append(filtro, resultados);
+            refrescar();
+        } else {
+            listado.append(makeTable(data, columns[kind], actions));
+        }
+        replace("records", listado);
         status("connection", "Backend conectado", true);
     } catch (e) {
         if (version !== session) return;
@@ -734,64 +798,100 @@ function historyForm(title, fields, onSave) {
     return section;
 }
 
+// El backend almacena notas y medicación como List<String> en HistoriaClinica.
+// Los endpoints auxiliares reciben {texto}, no objetos de fecha, dosis o profesional.
+// Usamos PUT con el DTO completo para conservar notas, medicación y médicos asociados.
+async function updateClinicalHistory(id, mutate) {
+    const current = await api(`historias/${id}`);
+    const updated = {
+        pacienteId: current.pacienteId,
+        estado: current.estado,
+        notasMedicas: [...(current.notasMedicas || [])],
+        historialMedicacion: [...(current.historialMedicacion || [])],
+        medicosIds: [...(current.medicosIds || [])]
+    };
+    mutate(updated);
+    return api(`historias/${id}`, "PUT", updated);
+}
+
 async function showHistoryDetails(id, card, version) {
-    const results = await Promise.allSettled([api(`consultas/historias/${id}/notas`), api(`consultas/historias/${id}/medicaciones`), api(`consultas/historias/${id}/medicos`)]);
+    let history;
+    try {
+        history = await api(`historias/${id}`);
+    } catch (error) {
+        card.append(el("p", error.message, "error-line"));
+        return;
+    }
     if (version !== session) return;
-    const [notes, meds, doctors] = results.map(x => x.status === "fulfilled" && Array.isArray(x.value) ? x.value : []);
-    const zone = el("div", null, "patient-grid"), n = panel("Notas médicas"), m = panel("Medicación"),
-        d = panel("Profesionales asociados");
+
+    const zone = el("div", null, "patient-grid");
+    const n = panel("Notas médicas"), m = panel("Medicación"), d = panel("Profesionales asociados");
     card.append(zone);
     zone.append(n, m, d);
+
+    const notes = history.notasMedicas || [];
     n.append(el("p", `${notes.length} nota(s) registrada(s)`, "muted"));
     if (!notes.length) n.append(el("p", "Sin notas registradas.", "empty"));
-    notes.forEach(note => {
-        const entry = el("div", null, "clinical-entry");
-        entry.append(el("strong", note.fechaNota || "Sin fecha"), el("p", note.nota || "—"), el("small", note.medicoId ? `Profesional: ${relation("medicos", note.medicoId)}` : "Sin profesional indicado"));
-        n.append(entry);
-    });
-    const noteForm = historyForm("+ Agregar nota médica", [["nota", "Contenido de la nota", "textarea"], ["fechaNota", "Fecha de la nota", "date"]], async data => {
-        data.medicoId = noteDoctor.value || null;
-        await api(`historias/${id}/notas`, "POST", data);
+    notes.forEach(note => n.append(el("div", note, "clinical-entry")));
+
+    const noteForm = historyForm("+ Agregar nota médica", [["texto", "Nota médica", "textarea"]], async data => {
+        const content = String(data.texto || "").trim();
+        if (!content) throw Error("La nota no puede estar vacía.");
+        const medicoId = noteDoctor.value;
+        const medico = (cache.medicos || []).find(x => String(x.id) === medicoId);
+        // El modelo actual no tiene autor por nota: se guarda junto al texto.
+        const nota = medico ? `${nameOf(medico)}: ${content}` : content;
+        await updateClinicalHistory(id, h => {
+            h.notasMedicas.push(nota);
+            if (medicoId && !h.medicosIds.includes(medicoId)) h.medicosIds.push(medicoId);
+        });
     });
     const noteDoctor = el("select");
-    noteDoctor.name = "medicoId";
-    noteDoctor.append(new Option("Profesional (opcional)", ""));
+    noteDoctor.name = "profesionalNota";
+    noteDoctor.append(new Option("Seleccionar profesional (opcional)", ""));
     (cache.medicos || []).forEach(x => noteDoctor.append(new Option(nameOf(x), x.id)));
     const doctorWrap = el("div", null, "field");
     doctorWrap.append(el("label", "Profesional que registra la nota"), noteDoctor);
     noteForm.querySelector("form button").before(doctorWrap);
     n.append(noteForm);
+
+    const meds = history.historialMedicacion || [];
     m.append(el("p", `${meds.length} registro(s) de medicación`, "muted"));
     if (!meds.length) m.append(el("p", "Sin medicación registrada.", "empty"));
     meds.forEach((med, i) => {
         const entry = el("div", null, "clinical-entry");
-        entry.append(el("strong", med.nombreMedicacion || "Medicación"), el("p", `${med.presentacionMedicacion || ""} · ${med.dosisMedicacion || ""}`), el("small", med.fechaMedicacion || "Sin fecha"), button("Eliminar", () => deleteMedication(id, i), "danger small"));
+        entry.append(el("span", med), button("Eliminar", () => deleteMedication(id, i), "danger small"));
         m.append(entry);
     });
-    m.append(historyForm("+ Agregar medicación", [["nombreMedicacion", "Nombre de la medicación", "text"], ["presentacionMedicacion", "Presentación", "text"], ["dosisMedicacion", "Dosis indicada", "text"], ["fechaMedicacion", "Fecha de indicación", "date"]], data => api(`historias/${id}/medicaciones`, "POST", data)));
+    m.append(historyForm("+ Agregar medicación", [["texto", "Medicación e indicaciones", "textarea"]], async data => {
+        const value = String(data.texto || "").trim();
+        if (!value) throw Error("La medicación no puede estar vacía.");
+        await updateClinicalHistory(id, h => h.historialMedicacion.push(value));
+    }));
+
+    const doctorIds = (history.medicosIds || []).map(String);
+    const doctors = (cache.medicos || []).filter(x => doctorIds.includes(String(x.id)));
     renderDoctors(d, doctors);
     const form = el("form", null, "sub-form"), select = el("select");
     select.name = "medicoId";
     select.required = true;
     select.append(new Option("Seleccionar profesional...", ""));
-    (cache.medicos || []).filter(x => !doctors.some(doc => String(doc.id) === String(x.id))).forEach(x => select.append(new Option(nameOf(x), x.id)));
+    (cache.medicos || []).filter(x => !doctorIds.includes(String(x.id)))
+        .forEach(x => select.append(new Option(nameOf(x), x.id)));
     const add = el("button", "Asociar profesional");
     add.type = "submit";
     form.append(select, add);
     form.onsubmit = async e => {
         e.preventDefault();
         try {
-            await api(`historias/${id}/medicos/${select.value}`, "POST");
+            await updateClinicalHistory(id, h => {
+                if (!h.medicosIds.includes(select.value)) h.medicosIds.push(select.value);
+            });
             inform("Profesional asociado.");
             await load();
-        } catch (err) {
-            inform(err.message);
-        }
+        } catch (error) { inform(error.message); }
     };
     d.append(form);
-    results.forEach((r, i) => {
-        if (r.status === "rejected") [n, m, d][i].append(el("p", r.reason.message, "error-line"));
-    });
 }
 
 function renderDoctors(target, items) {
@@ -804,12 +904,10 @@ function renderDoctors(target, items) {
 async function deleteMedication(id, index) {
     if (!confirm("¿Eliminar esta medicación?")) return;
     try {
-        await api(`historias/${id}/medicaciones/${index}`, "DELETE");
+        await updateClinicalHistory(id, h => h.historialMedicacion.splice(index, 1));
         inform("Medicación eliminada.");
         await load();
-    } catch (e) {
-        inform(e.message);
-    }
+    } catch (error) { inform(error.message); }
 }
 
 function timelineRow(category, when, title, detail) {
@@ -837,19 +935,18 @@ async function showPatientTimeline(version) {
         date: m.fechaHora || "",
         node: timelineRow("Medición", m.fechaHora, m.tipo || "Medición", `${m.valor ?? "—"} ${m.unidad || ""}`)
     }));
-    const noteResults = await Promise.allSettled(histories.map(h => api(`consultas/historias/${h.id}/notas`)));
-    const medicationResults = await Promise.allSettled(histories.map(h => api(`consultas/historias/${h.id}/medicaciones`)));
+    const detailResults = await Promise.allSettled(histories.map(h => api(`historias/${h.id}`)));
     if (version !== session) return;
-    noteResults.forEach(r => {
-        if (r.status === "fulfilled" && Array.isArray(r.value)) r.value.forEach(n => all.push({
-            date: n.fechaNota || "",
-            node: timelineRow("Nota médica", n.fechaNota, `Nota de ${n.medicoId ? relation("medicos", n.medicoId) : "profesional"}`, n.nota)
+    detailResults.forEach(result => {
+        if (result.status !== "fulfilled") return;
+        const h = result.value;
+        (h.notasMedicas || []).forEach(note => all.push({
+            date: "",
+            node: timelineRow("Nota médica", "Sin fecha registrada", "Nota clínica", note)
         }));
-    });
-    medicationResults.forEach(r => {
-        if (r.status === "fulfilled" && Array.isArray(r.value)) r.value.forEach(m => all.push({
-            date: m.fechaMedicacion || "",
-            node: timelineRow("Medicación", m.fechaMedicacion, m.nombreMedicacion || "Medicación", `${m.presentacionMedicacion || ""} · ${m.dosisMedicacion || ""}`)
+        (h.historialMedicacion || []).forEach(med => all.push({
+            date: "",
+            node: timelineRow("Medicación", "Sin fecha registrada", "Indicación", med)
         }));
     });
     all.sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -860,11 +957,8 @@ async function showPatientTimeline(version) {
     sources.forEach((r, i) => {
         if (r.status === "rejected") main.append(el("p", `No se pudieron consultar ${["historias clínicas", "alertas", "mediciones"][i]}: ${r.reason.message}`, "error-line"));
     });
-    noteResults.forEach(r => {
-        if (r.status === "rejected") main.append(el("p", `No se pudieron recuperar notas: ${r.reason.message}`, "error-line"));
-    });
-    medicationResults.forEach(r => {
-        if (r.status === "rejected") main.append(el("p", `No se pudieron recuperar medicaciones: ${r.reason.message}`, "error-line"));
+    detailResults.forEach(r => {
+        if (r.status === "rejected") main.append(el("p", `No se pudo recuperar una historia: ${r.reason.message}`, "error-line"));
     });
 }
 
