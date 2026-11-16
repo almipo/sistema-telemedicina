@@ -144,11 +144,58 @@ MONGO_URI_DOCKER=mongodb://USUARIO:CONTRASENA@mongodb:27017/telemedicina_metrica
 
 Los valores anteriores son ilustrativos. Deben coincidir con los usuarios realmente existentes en cada base de datos.
 
-**MongoDB utiliza autenticación.** La configuración actual conserva los usuarios almacenados en el volumen existente. Para desplegar el sistema en una instalación completamente nueva es necesario inicializar previamente el usuario correspondiente. Este procedimiento debe verificarse antes de utilizar el repositorio como instalación reproducible desde cero.
+**MongoDB utiliza autenticación.** En una instalación nueva es necesario crear el usuario de aplicación antes de iniciar el microservicio de Métricas. Los pasos se detallan a continuación.
 
-El archivo `.env` no debe publicarse en GitHub.
+El archivo `.env` contiene credenciales locales y **no debe publicarse en GitHub**.
 
-### 3. Validar la configuración
+### 3. Inicializar MongoDB (solo en una instalación nueva)
+
+Este procedimiento corresponde a la configuración Docker Compose del proyecto con la imagen `mongo:7`, el servicio llamado `mongodb` y el comando `mongod --auth`. Ejecutarlo **solo si el volumen de MongoDB está vacío y todavía no hay usuarios creados**.
+
+1. Iniciar únicamente MongoDB desde la raíz del repositorio:
+
+   ```powershell
+   docker compose up -d mongodb
+   docker compose ps
+   ```
+
+2. Abrir la consola de MongoDB dentro del contenedor:
+
+   ```powershell
+   docker compose exec mongodb mongosh
+   ```
+
+3. En el prompt de `mongosh`, crear un usuario de aplicación en la base `admin` con permisos sobre `telemedicina_metricas`:
+
+   ```javascript
+   db.getSiblingDB("admin").createUser({
+     user: "telemedicina_app",
+     pwd: "ELEGIR_CONTRASENA_SEGURA",
+     roles: [{ role: "readWrite", db: "telemedicina_metricas" }]
+   })
+   ```
+
+   Sustituir `ELEGIR_CONTRASENA_SEGURA` por una contraseña propia. El comando aprovecha la **excepción de localhost** de MongoDB, disponible únicamente mientras no exista ningún usuario en una instancia con autenticación habilitada. Si ya existen usuarios, **no volver a ejecutarlo**: utilizar credenciales existentes o acceder mediante un usuario administrador.
+
+4. Salir de `mongosh` con `exit` y actualizar `.env` para que la URI coincida con el usuario y contraseña creados:
+
+   ```dotenv
+   MONGO_URI_DOCKER=mongodb://telemedicina_app:ELEGIR_CONTRASENA_SEGURA@mongodb:27017/telemedicina_metricas?authSource=admin
+   ```
+
+   Si la contraseña contiene caracteres reservados en una URL (por ejemplo `@`, `:` o `/`), deben codificarse en la URI. **No utilizar las credenciales de ejemplo en un entorno expuesto.**
+
+5. Comprobar la autenticación desde el contenedor (pedirá la contraseña):
+
+   ```powershell
+   docker compose exec mongodb mongosh -u telemedicina_app -p --authenticationDatabase admin --eval 'db.getSiblingDB("telemedicina_metricas").runCommand({ping:1})'
+   ```
+
+   Una respuesta con `ok: 1` indica que la autenticación y conexión son correctas.
+
+**Instalaciones existentes:** los usuarios y datos se conservan en el volumen `mongo_data`. Modificar `.env` no cambia contraseñas ya registradas. **No usar `docker compose down -v` para solucionar problemas de acceso**, porque eliminaría los volúmenes y sus datos.
+
+### 4. Validar la configuración
 
 ```bash
 docker compose config --quiet
@@ -156,7 +203,7 @@ docker compose config --quiet
 
 Si no se muestran errores, continuar con el arranque.
 
-### 4. Construir e iniciar los contenedores
+### 5. Construir e iniciar los contenedores
 
 ```bash
 docker compose up -d --build
@@ -164,7 +211,7 @@ docker compose up -d --build
 
 Este comando descarga las imágenes necesarias, construye las aplicaciones e inicia los servicios definidos en Docker Compose.
 
-### 5. Verificar los contenedores
+### 6. Verificar los contenedores
 
 ```bash
 docker compose ps
@@ -183,7 +230,7 @@ Los servicios previstos son:
 
 Que un contenedor figure como iniciado no garantiza por sí solo que todas las integraciones funcionen. Se recomienda realizar las comprobaciones funcionales indicadas más adelante.
 
-### 6. Acceder a los servicios
+### 7. Acceder a los servicios
 
 - **Panel médico:** http://localhost:3000
 - **Swagger UI:** http://localhost:8080/swagger-ui/index.html
@@ -191,7 +238,7 @@ Que un contenedor figure como iniciado no garantiza por sí solo que todas las i
 - **API de Métricas:** http://localhost:8081/api/umbrales
 - **API de Alertas:** http://localhost:8082/api/alertas
 
-### 7. Actualizar los contenedores
+### 8. Actualizar los contenedores
 
 Después de realizar modificaciones en el código:
 
@@ -201,7 +248,7 @@ docker compose up -d --build
 
 Docker reconstruirá los servicios que correspondan y aplicará la configuración actualizada.
 
-### 8. Detener el sistema
+### 9. Detener el sistema
 
 ```bash
 docker compose down
@@ -297,6 +344,47 @@ El backend dispone de documentación interactiva mediante Swagger/OpenAPI.
 Desde Swagger UI es posible consultar los endpoints, revisar parámetros, visualizar estructuras de solicitudes y probar operaciones REST.
 
 Para acceder, el backend debe estar ejecutándose.
+
+### Consultas GraphQL
+
+El backend implementa GraphQL para consultar historias clínicas y recuperar únicamente los campos solicitados.
+
+**Endpoint:**
+
+```http
+POST http://localhost:8080/graphql
+```
+
+**Ejemplo de consulta:**
+
+```graphql
+query {
+  historiaClinica(id: "UUID_HISTORIA_CLINICA") {
+    id
+    estado
+    notasMedicas
+    historialMedicacion
+  }
+}
+```
+
+También se pueden consultar las historias clínicas asociadas a un paciente:
+
+```graphql
+query {
+  historiasPaciente(pacienteId: "UUID_PACIENTE") {
+    id
+    pacienteId
+    estado
+  }
+}
+```
+
+Las consultas pueden ejecutarse desde Postman utilizando el método `POST`, seleccionando **Body → GraphQL**.
+
+Los identificadores deben corresponder a registros existentes en PostgreSQL y tener formato UUID. Los UUID de ejemplo no se generan automáticamente en instalaciones nuevas.
+
+GraphQL permite seleccionar los campos necesarios sin modificar el endpoint de consulta.
 
 ## Monitoreo mediante el simulador IoT
 
