@@ -1,148 +1,467 @@
 # Sistema de Gestión Médica y Monitoreo de Pacientes con Telemedicina
 
-Sistema académico para administrar pacientes, médicos, turnos, historias clínicas y dispositivos, registrar mediciones IoT simuladas y visualizar alertas en tiempo real. **Utilizar exclusivamente datos ficticios**: no es un sistema clínico certificado ni dispone de controles de seguridad suficientes para datos sanitarios reales.
+Sistema académico orientado a la gestión de pacientes, médicos, turnos, historias clínicas y dispositivos médicos, con monitoreo mediante mediciones IoT simuladas y generación de alertas en tiempo real.
 
-## Arquitectura
+El proyecto utiliza una arquitectura distribuida basada en **Java 21, Spring Boot, PostgreSQL, MongoDB, REST, WebSocket y Docker Compose**.
+
+> **Importante:** utilizar exclusivamente datos ficticios. El sistema fue desarrollado con fines académicos y no cuenta con las certificaciones ni los mecanismos de seguridad necesarios para utilizar datos sanitarios reales.
+
+## Arquitectura del sistema
 
 ```text
-Navegador (frontend, :3000 o :63342)
-  ├─ REST → Backend (:8080) ─→ PostgreSQL
-  ├─ REST → Métricas (:8081) ─→ MongoDB
-  └─ REST/WebSocket → Alertas (:8082) ─→ PostgreSQL
+Navegador (Frontend :3000 / :63342)
+  ├── REST → Backend (:8080) ──→ PostgreSQL
+  ├── REST → Métricas (:8081) ──→ MongoDB
+  └── REST/WebSocket → Alertas (:8082) ──→ PostgreSQL
 
-Simulador IoT (Java 21, sin puerto de escucha)
-  ├─ GET dispositivos → Backend (:8080)
-  └─ POST mediciones → Métricas (:8081)
-                               ├─ verifica dispositivo/paciente → Backend
-                               └─ detecta valores fuera de umbral → Alertas
+Simulador IoT (Java 21)
+  ├── Consulta dispositivos → Backend (:8080)
+  └── Envía mediciones → Métricas (:8081)
+                           ├── Verifica dispositivo y paciente → Backend
+                           └── Detecta valores fuera de umbral → Alertas
 ```
 
-| Componente | Función | Puerto local | Persistencia |
+El backend concentra la gestión clínica, mientras que los microservicios de Métricas y Alertas implementan responsabilidades específicas y se comunican mediante interfaces REST.
+
+Esta separación permite mantener, actualizar o reemplazar componentes de forma independiente, siempre que se respeten sus contratos de comunicación.
+
+### Componentes y puertos
+
+| Componente | Responsabilidad | Puerto | Persistencia |
 |---|---|---|---|
-| `frontend/` | Panel de gestión médica | 3000 (Docker), 63342 (vista de IntelliJ) | No propia |
-| `backend/` | API REST/GraphQL, gestión clínica y dispositivos | 8080 | PostgreSQL |
-| `microservicio-metricas/` | Recepción de mediciones y configuración de umbrales | 8081 | MongoDB |
-| `microservicio-alertas/` | Alertas, cambios de estado y notificaciones WebSocket | 8082 | PostgreSQL |
-| `simulador-iot/` | Generación de mediciones por dispositivo y paciente | No publica puerto | No propia |
+| `frontend/` | Panel de gestión médica | 3000 (Docker) / 63342 (IntelliJ) | Sin persistencia propia |
+| `backend/` | Gestión clínica y API REST/GraphQL | 8080 | PostgreSQL |
+| `microservicio-metricas/` | Mediciones y umbrales | 8081 | MongoDB |
+| `microservicio-alertas/` | Alertas y notificaciones WebSocket | 8082 | PostgreSQL |
+| `simulador-iot/` | Generación de mediciones simuladas | Sin puerto de escucha | Sin persistencia propia |
 | PostgreSQL | Almacenamiento relacional | 5433 (host) / 5432 (contenedor) | Volumen persistente |
-| MongoDB | Mediciones y umbrales | 27018 (host) / 27017 (contenedor) | Volumen persistente |
+| MongoDB | Almacenamiento de mediciones y umbrales | 27018 (host) / 27017 (contenedor) | Volumen persistente |
 
-> Puertos correspondientes al `docker-compose.yml` incluido en este repositorio. Al ejecutar aplicaciones desde IntelliJ, utilizar los puertos publicados (5433/27018), salvo que el entorno local tenga otra configuración.
+Los puertos corresponden a la configuración local definida en `docker-compose.yml`.
 
-## Requisitos
+## Tecnologías utilizadas
 
-- Java **21**, Maven **3.9+**, IntelliJ IDEA (para ejecución local).
-- Docker Engine con Docker Compose (para servicios en contenedores).
-- PostgreSQL y MongoDB disponibles en los puertos configurados.
-- Navegador actualizado. Para pruebas manuales de API, Postman o Swagger UI.
+- **Java 21:** desarrollo del backend, microservicios y simulador.
+- **Spring Boot:** implementación de servicios y API.
+- **Maven:** gestión de dependencias y construcción de los módulos Java.
+- **PostgreSQL:** persistencia de información relacional.
+- **MongoDB:** almacenamiento de mediciones y configuración de umbrales.
+- **REST y GraphQL:** interfaces de acceso a los datos.
+- **WebSocket:** comunicación de alertas en tiempo real.
+- **HTML, CSS y JavaScript:** interfaz web.
+- **Docker y Docker Compose:** construcción y ejecución de servicios en contenedores.
+- **Swagger/OpenAPI:** documentación y pruebas de endpoints REST.
 
-## Organización
+## Organización del proyecto
 
 ```text
 sistema-telemedicina/
-├── backend/README.md
-├── microservicio-metricas/README.md
-├── microservicio-alertas/README.md
-├── frontend/README.md
-├── simulador-iot/README.md
+├── backend/
+│   ├── src/
+│   ├── Dockerfile
+│   └── README.md
+├── microservicio-metricas/
+│   ├── src/
+│   ├── Dockerfile
+│   └── README.md
+├── microservicio-alertas/
+│   ├── src/
+│   ├── Dockerfile
+│   └── README.md
+├── frontend/
+│   ├── Dockerfile
+│   └── README.md
+├── simulador-iot/
+│   └── README.md
 ├── docker-compose.yml
+├── .env.example
+├── .gitignore
 └── README.md
 ```
 
-## Puesta en marcha: IntelliJ + bases de datos Docker
+Cada módulo incluye su propia documentación, con información sobre responsabilidades, configuración, ejecución y funcionalidades.
 
-1. Iniciar PostgreSQL y MongoDB con la configuración de Docker Compose existente. Verificar `docker compose ps`.
-2. Iniciar **BackendApplication**, luego **AlertasApplication** y **MetricasApplication** desde IntelliJ, con variables de entorno correspondientes (detalladas en los README de cada módulo).
-3. Abrir el frontend en `http://localhost:3000` si está servido por Nginx/Docker o mediante el servidor HTTP de IntelliJ (por ejemplo `http://localhost:63342/...`). No usar `file://`.
-4. Registrar pacientes y dispositivos de tipo compatible, activos y asociados al paciente.
-5. Iniciar **SimuladorIotApplication** con los argumentos descritos a continuación.
+## Requisitos de ejecución
 
-Variables orientativas para los procesos **locales** (reemplazar credenciales, bases y puertos por los efectivos):
+El sistema puede ejecutarse de dos maneras.
 
-```text
-Backend: DB_URL=jdbc:postgresql://localhost:5433/telemedicina_dev
-         DB_USER=telemedicina
-         DB_PASSWORD=<contraseña local>
-Alertas: DB_URL=jdbc:postgresql://localhost:5433/telemedicina_dev
-         DB_USER=telemedicina
-         DB_PASSWORD=<contraseña local>
-Métricas: MONGO_URI=mongodb://USUARIO:CONTRASENA@localhost:27018/telemedicina_metricas?authSource=admin
-          BACKEND_URL=http://localhost:8080
-          ALERTAS_URL=http://localhost:8082
-          CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:63342,http://127.0.0.1:63342
+### Opción A: ejecución con Docker
+
+Requiere:
+
+- Docker Desktop o Docker Engine.
+- Docker Compose.
+- Git, para clonar el repositorio.
+- Navegador web actualizado.
+
+No es necesario instalar Java, Maven, PostgreSQL ni MongoDB de manera independiente para ejecutar los servicios contenedorizados.
+
+### Opción B: desarrollo desde IntelliJ IDEA
+
+Requiere:
+
+- Java 21.
+- Maven 3.9 o superior.
+- IntelliJ IDEA.
+- Docker, para ejecutar PostgreSQL y MongoDB.
+- Navegador web actualizado.
+
+Esta modalidad permite ejecutar y depurar individualmente el backend y los microservicios.
+
+## Ejecución y despliegue con Docker Compose
+
+Docker Compose permite administrar los contenedores del frontend, backend, microservicios y bases de datos mediante una configuración centralizada.
+
+### 1. Clonar el repositorio
+
+```bash
+git clone URL_DEL_REPOSITORIO
+cd sistema-telemedicina
 ```
 
-MongoDB utiliza autenticación. Ajustar el usuario, la contraseña y `authSource` según el usuario realmente creado. Si tu instancia local no usa el puerto 27018, adaptar la URL. **El ejemplo no reemplaza los valores de tu entorno existente**.
+Reemplazar `URL_DEL_REPOSITORIO` por la dirección del repositorio publicado en GitHub.
 
-### Ejecución completa por Docker Compose
+### 2. Configurar las variables de entorno
 
-1. Crear `.env` a partir de `.env.example` (o conservar el `.env` privado existente). Definir `POSTGRES_DB`, `DB_USER`, `DB_PASSWORD`, `MONGO_ROOT_USER`, `MONGO_ROOT_PASSWORD` y `MONGO_URI_DOCKER` con los valores correctos. **No reemplazar credenciales de una base ya existente a ciegas**. `MONGO_URI_DOCKER` usa `mongodb:27017`, nunca `localhost:27018`, porque se consume desde un contenedor.
-2. Verificar la configuración antes del despliegue: `docker compose config --quiet`.
-3. Ejecutar desde la raíz:
+Crear el archivo `.env` a partir de `.env.example`.
+
+En PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Completar las variables de conexión correspondientes a PostgreSQL y MongoDB.
+
+La configuración local utilizada durante el desarrollo incluye:
+
+```dotenv
+POSTGRES_DB=telemedicina_dev
+DB_USER=telemedicina
+DB_PASSWORD=CAMBIAR_CONTRASENA
+MONGO_URI_DOCKER=mongodb://USUARIO:CONTRASENA@mongodb:27017/telemedicina_metricas?authSource=admin
+```
+
+Los valores anteriores son ilustrativos. Deben coincidir con los usuarios realmente existentes en cada base de datos.
+
+**MongoDB utiliza autenticación.** La configuración actual conserva los usuarios almacenados en el volumen existente. Para desplegar el sistema en una instalación completamente nueva es necesario inicializar previamente el usuario correspondiente. Este procedimiento debe verificarse antes de utilizar el repositorio como instalación reproducible desde cero.
+
+El archivo `.env` no debe publicarse en GitHub.
+
+### 3. Validar la configuración
+
+```bash
+docker compose config --quiet
+```
+
+Si no se muestran errores, continuar con el arranque.
+
+### 4. Construir e iniciar los contenedores
 
 ```bash
 docker compose up -d --build
-docker compose ps
-docker compose logs -f backend metricas alertas
 ```
 
-Accesos: Frontend <http://localhost:3000>, Backend <http://localhost:8080>, Métricas <http://localhost:8081>, Alertas <http://localhost:8082>. PostgreSQL y MongoDB solo publican sus puertos en `127.0.0.1` (5433 y 27018, respectivamente).
+Este comando descarga las imágenes necesarias, construye las aplicaciones e inicia los servicios definidos en Docker Compose.
 
-**Importante sobre MongoDB y los datos existentes:** el servicio utiliza `mongod --auth`. Las variables `MONGO_ROOT_USER` y `MONGO_ROOT_PASSWORD` permiten que la imagen oficial cree el administrador **solamente al iniciar una base con volumen vacío**. Si ya existe `mongo_data`, los usuarios y contraseñas persistidos **no se reescriben**; por eso la URI de Métricas debe contener credenciales que ya funcionen. Cambiar variables no cambia las claves de un usuario MongoDB ya creado. No utilizar `docker compose down -v` salvo que se quiera destruir deliberadamente la información de las bases.
+### 5. Verificar los contenedores
 
-**Simulador:** tiene `Dockerfile` propio, pero se ejecuta por separado y no se incluye en Compose para evitar generar mediciones automáticamente. Ver `simulador-iot/README.md`. Con IntelliJ puede usar `localhost`; en una ejecución de contenedor conectado a la red Compose debe utilizar los nombres `backend:8080` y `metricas:8081`.
+```bash
+docker compose ps
+```
 
-**Frontend:** las cuatro URLs públicas se configuran en las variables `FRONTEND_*` del `.env` y se convierten en `config.js` al arrancar Nginx. Se trata de direcciones que usa **el navegador**, por lo que en un despliegue local apuntan a `localhost` y no a los nombres de servicios internos. La configuración es de desarrollo local; para otro host se deben adaptar las URLs y CORS.
+Los servicios previstos son:
 
-Para detener sin borrar datos: `docker compose down`. Para reconstruir aplicaciones después de cambios: `docker compose up -d --build`. El repositorio conserva configuraciones, **no los datos de los volúmenes ni los contenedores en ejecución**.
+| Servicio | Puerto local |
+|---|---|
+| Frontend | 3000 |
+| Backend | 8080 |
+| Métricas | 8081 |
+| Alertas | 8082 |
+| PostgreSQL | 5433 |
+| MongoDB | 27018 |
 
-## Flujo de monitoreo IoT
+Que un contenedor figure como iniciado no garantiza por sí solo que todas las integraciones funcionen. Se recomienda realizar las comprobaciones funcionales indicadas más adelante.
 
-El simulador consulta los dispositivos registrados y, en modo `--todos`, selecciona únicamente aquellos con **estado ACTIVO**, **pacienteId válido** y **tipo reconocido**. Genera lecturas según el tipo:
+### 6. Acceder a los servicios
 
-| Tipo de dispositivo | Mediciones compatibles |
+- **Panel médico:** http://localhost:3000
+- **Swagger UI:** http://localhost:8080/swagger-ui/index.html
+- **Documentación OpenAPI:** http://localhost:8080/v3/api-docs
+- **API de Métricas:** http://localhost:8081/api/umbrales
+- **API de Alertas:** http://localhost:8082/api/alertas
+
+### 7. Actualizar los contenedores
+
+Después de realizar modificaciones en el código:
+
+```bash
+docker compose up -d --build
+```
+
+Docker reconstruirá los servicios que correspondan y aplicará la configuración actualizada.
+
+### 8. Detener el sistema
+
+```bash
+docker compose down
+```
+
+Este comando detiene y elimina los contenedores del proyecto, conservando los datos almacenados en los volúmenes persistentes.
+
+> **Advertencia:** no ejecutar `docker compose down -v` si se desean conservar los datos, ya que elimina los volúmenes administrados por el proyecto.
+
+## Ejecución desde IntelliJ IDEA
+
+Esta modalidad utiliza Docker únicamente para las bases de datos, mientras las aplicaciones Java se ejecutan desde IntelliJ.
+
+### 1. Iniciar PostgreSQL y MongoDB
+
+Desde la raíz del proyecto:
+
+```bash
+docker compose up -d postgres mongodb
+```
+
+Comprobar su estado:
+
+```bash
+docker compose ps
+```
+
+Si existen contenedores del backend, Métricas o Alertas en ejecución, detenerlos para evitar conflictos de puertos:
+
+```bash
+docker compose stop backend metricas alertas
+```
+
+### 2. Configurar las aplicaciones
+
+Configurar las variables de entorno de cada aplicación mediante **Run → Edit Configurations**.
+
+Ejemplo de configuración para desarrollo local:
+
+```text
+Backend:
+  DB_URL=jdbc:postgresql://localhost:5433/telemedicina_dev
+  DB_USER=telemedicina
+  DB_PASSWORD=<contraseña local>
+
+Alertas:
+  DB_URL=jdbc:postgresql://localhost:5433/telemedicina_dev
+  DB_USER=telemedicina
+  DB_PASSWORD=<contraseña local>
+
+Métricas:
+  MONGO_URI=mongodb://USUARIO:CONTRASENA@localhost:27018/telemedicina_metricas?authSource=admin
+  BACKEND_URL=http://localhost:8080
+  ALERTAS_URL=http://localhost:8082
+```
+
+En esta modalidad, las aplicaciones Java utilizan `localhost` para acceder a los puertos publicados por Docker.
+
+La configuración detallada de cada módulo se encuentra en su respectivo README.
+
+### 3. Iniciar las aplicaciones
+
+Ejecutar desde IntelliJ:
+
+1. `BackendApplication`.
+2. `AlertasApplication`.
+3. `MetricasApplication`.
+
+### 4. Abrir el frontend
+
+Utilizar `http://localhost:3000` si el frontend está servido por Docker, o la dirección proporcionada por el servidor HTTP de IntelliJ, normalmente bajo `http://localhost:63342/`.
+
+No utilizar directamente el protocolo `file://`.
+
+### 5. Registrar información inicial
+
+Registrar pacientes ficticios y asociarles dispositivos activos con tipos compatibles.
+
+Posteriormente, iniciar el simulador IoT para generar mediciones.
+
+## Documentación y pruebas de la API
+
+### Swagger UI
+
+El backend dispone de documentación interactiva mediante Swagger/OpenAPI.
+
+**Puerto:** `8080`
+
+**Interfaz Swagger:** http://localhost:8080/swagger-ui/index.html
+
+**Especificación OpenAPI:** http://localhost:8080/v3/api-docs
+
+Desde Swagger UI es posible consultar los endpoints, revisar parámetros, visualizar estructuras de solicitudes y probar operaciones REST.
+
+Para acceder, el backend debe estar ejecutándose.
+
+## Monitoreo mediante el simulador IoT
+
+El simulador genera mediciones ficticias asociadas a dispositivos registrados en el sistema.
+
+En el modo `--todos`, consulta los dispositivos disponibles y selecciona aquellos que poseen:
+
+- Estado `ACTIVO`.
+- Paciente asociado.
+- Tipo de dispositivo reconocido.
+
+### Tipos de dispositivos y mediciones
+
+| Dispositivo | Mediciones generadas |
 |---|---|
 | `PULSOMETRO` | `PULSO` |
 | `TERMOMETRO` | `TEMPERATURA` |
 | `TENSIOMETRO` | `PRESION_SISTOLICA`, `PRESION_DIASTOLICA` |
-| `MONITOR_MULTIPARAMETRICO` | Las cuatro anteriores |
+| `MONITOR_MULTIPARAMETRICO` | Pulso, temperatura y ambas presiones |
 
-Cada lectura incluye `tipo`, `valor`, `pacienteId` y `dispositivoId`. Métricas comprueba la asociación y evalúa el valor contra el umbral configurable del **tipo de medición**, no contra el tipo comercial del dispositivo.
+Cada medición incluye:
 
-Configuración recomendada en **Run → Edit Configurations → Program arguments** de `SimuladorIotApplication`:
+```json
+{
+  "tipo": "PULSO",
+  "valor": 85,
+  "pacienteId": "UUID_DEL_PACIENTE",
+  "dispositivoId": "UUID_DEL_DISPOSITIVO"
+}
+```
+
+El microservicio de Métricas recibe la medición, verifica su asociación con el dispositivo y paciente, la registra y evalúa el valor utilizando el umbral correspondiente al tipo de medición.
+
+Cuando se detecta un valor fuera del rango configurado, se inicia el flujo de generación de alertas.
+
+### Ejecutar el simulador
+
+Desde IntelliJ IDEA, seleccionar `SimuladorIotApplication` y abrir:
+
+**Run → Edit Configurations → Program arguments**
+
+Ingresar:
 
 ```text
 --todos --backend http://localhost:8080 --api http://localhost:8081 --intervalo 10 --cantidad 100 --riesgo 0.2
 ```
 
-Genera **100 mediciones**, **una cada 10 segundos**, con **20 % de probabilidad de producir un valor anómalo según los rangos internos del generador**. El microservicio determina finalmente si se dispara una alerta utilizando los **umbrales vigentes**, que pueden cambiar desde el panel. El generador no recalcula automáticamente su distribución en función de esos umbrales. `--cantidad 0` indica ejecución continua. Para detener una simulación continua, detener el proceso en IntelliJ.
+Parámetros principales:
+
+| Parámetro | Descripción |
+|---|---|
+| `--todos` | Utiliza dispositivos registrados y compatibles |
+| `--backend` | Dirección de la API principal |
+| `--api` | Dirección de Métricas |
+| `--intervalo 10` | Envía una medición cada 10 segundos |
+| `--cantidad 100` | Genera 100 mediciones |
+| `--riesgo 0.2` | Probabilidad del 20 % de producir valores anómalos simulados |
+
+El simulador utiliza rangos internos para generar valores. La evaluación definitiva corresponde al microservicio de Métricas, que aplica los umbrales actualmente configurados.
+
+El parámetro `--cantidad 0` permite realizar una simulación continua. Para detenerla, finalizar el proceso de IntelliJ.
+
+El simulador se ejecuta de manera independiente de los contenedores principales.
+
+## Gestión de umbrales
+
+Los umbrales se configuran desde el frontend y son administrados por el microservicio de Métricas.
+
+Se contemplan cuatro tipos de medición:
+
+- Pulso.
+- Temperatura.
+- Presión sistólica.
+- Presión diastólica.
+
+Cada tipo posee valores mínimos y máximos editables. Los cambios se almacenan en MongoDB y se utilizan para evaluar las nuevas mediciones.
+
+Los umbrales son generales por tipo de medición, no individuales por dispositivo o paciente.
+
+## Gestión de alertas
+
+Las alertas se generan como consecuencia de mediciones que quedan fuera de los umbrales establecidos.
+
+El microservicio de Alertas permite consultar registros, actualizar su estado y enviar notificaciones en tiempo real mediante WebSocket.
+
+Desde el frontend se dispone de las siguientes acciones:
+
+| Acción | Funcionalidad |
+|---|---|
+| **Datos** | Abre la ficha del paciente asociado |
+| **Atender** | Actualiza el estado a `ATENDIDA` |
+| **Descartar** | Actualiza el estado a `DESCARTADA` |
+
+Las alertas se consultan mediante:
+
+```text
+http://localhost:8082/api/alertas
+```
+
+Las notificaciones WebSocket utilizan:
+
+```text
+ws://localhost:8082/ws/alertas
+```
 
 ## Validación funcional
 
-1. `GET http://localhost:8080/api/pacientes`: lista de pacientes.
-2. `GET http://localhost:8080/api/dispositivos`: dispositivos registrados.
-3. `GET http://localhost:8081/api/umbrales`: rangos editables.
-4. `GET http://localhost:8081/api/mediciones`: mediciones persistidas.
-5. `GET http://localhost:8082/api/alertas`: alertas registradas.
-6. En el frontend: comprobar las alertas en tiempo real, los botones **Datos**, **Atender** y **Descartar**, y la ficha del paciente.
+Para comprobar el funcionamiento del sistema se recomienda:
 
-La consulta REST de alertas del frontend usa el servicio **8082**, no el proxy del backend **8080**. El WebSocket utiliza `ws://localhost:8082/ws/alertas`.
+1. Consultar pacientes: `GET http://localhost:8080/api/pacientes`.
+2. Consultar dispositivos: `GET http://localhost:8080/api/dispositivos`.
+3. Consultar umbrales: `GET http://localhost:8081/api/umbrales`.
+4. Consultar mediciones: `GET http://localhost:8081/api/mediciones`.
+5. Consultar alertas: `GET http://localhost:8082/api/alertas`.
+6. Registrar y consultar un paciente desde el frontend.
+7. Asociar un dispositivo activo al paciente.
+8. Ejecutar el simulador IoT y comprobar la recepción de mediciones.
+9. Verificar la generación de alertas y sus notificaciones en tiempo real.
+10. Probar las acciones Datos, Atender y Descartar.
 
-## Pruebas
+## Pruebas automatizadas
 
-Desde cada módulo Java: `mvn test`. El simulador también puede ejecutarse con `mvn package` y `java -jar target/simulador-iot-1.0.0.jar ...`. Las pruebas automatizadas no sustituyen la validación integrada con bases de datos y servicios activos.
+Cada módulo Java dispone de su propio proyecto Maven.
 
-## Diagnóstico rápido
+Para ejecutar sus pruebas:
 
-| Síntoma | Comprobación |
+```bash
+mvn test
+```
+
+Para construir un módulo:
+
+```bash
+mvn package
+```
+
+Las pruebas automatizadas deben complementarse con verificaciones de integración utilizando las bases de datos y los microservicios en ejecución.
+
+## Diagnóstico de problemas frecuentes
+
+| Problema | Comprobación recomendada |
 |---|---|
-| `Failed to fetch` / CORS | Revisar origen del frontend, URL destino y configuración CORS del servicio |
-| `HTTP 400` en alertas | Verificar que se consulta `:8082/api/alertas`; revisar respuesta/logs |
-| MongoDB no conecta | Comprobar `MONGO_URI`, puerto publicado, credenciales y `authSource` |
-| No aparecen lecturas | Confirmar dispositivos `ACTIVO`, paciente asociado, tipo reconocido, Métricas accesible |
-| Exceso de alertas | Ajustar `--intervalo` y `--riesgo` del simulador |
-| WebSocket desconectado | Revisar microservicio :8082 y `ALERTAS_WS_URL` |
+| `Failed to fetch` o CORS | Revisar URL, puerto y origen permitido |
+| Error HTTP 400 en Alertas | Comprobar endpoint `:8082/api/alertas` y registros del servicio |
+| Error de conexión con MongoDB | Revisar credenciales, URI, puerto y `authSource` |
+| Error de conexión con PostgreSQL | Verificar credenciales, base de datos y puerto 5433 |
+| No se generan mediciones | Comprobar dispositivos activos, asociación y tipos compatibles |
+| Exceso de alertas | Ajustar `--intervalo` y `--riesgo` |
+| WebSocket desconectado | Verificar Alertas en el puerto 8082 |
+| Conflicto de puertos | Evitar ejecutar simultáneamente los mismos servicios desde Docker e IntelliJ |
 
-## Alcance y seguridad
+Para revisar los registros de los contenedores:
 
-Proyecto educativo. No incluye autenticación/autorización integral ni controles de privacidad adecuados para un entorno clínico real. No utilizar datos médicos reales ni exponer directamente los servicios a Internet. Cada componente se documenta en su propio `README.md`.
+```bash
+docker compose logs --tail=100 backend metricas alertas
+```
+
+## Alcance y consideraciones de seguridad
+
+Este sistema constituye un prototipo académico y no está destinado al uso clínico real.
+
+No incorpora controles integrales de autenticación, autorización, privacidad ni protección de información sanitaria requeridos en un entorno productivo.
+
+Las credenciales deben configurarse mediante variables de entorno y mantenerse fuera del repositorio público.
+
+Los datos persistidos en los volúmenes Docker no forman parte del código fuente publicado en GitHub.
+
+Para información específica de instalación, configuración y funcionamiento, consultar el archivo `README.md` de cada módulo.
