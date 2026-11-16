@@ -1,0 +1,29 @@
+server:
+  port: ${PORT:8081}
+
+spring:
+  application:
+    name: microservicio-metricas
+  data:
+    mongodb:
+      uri: ${MONGO_URI}
+
+services:
+  backend: ${BACKEND_URL:http://localhost:8080}
+  alertas: ${ALERTAS_URL:http://localhost:8082}
+  timeout-segundos: ${HTTP_TIMEOUT_SEGUNDOS:5}
+
+metricas:
+  umbrales:
+    pulso:
+      min: ${UMBRAL_PULSO_MIN:50}
+      max: ${UMBRAL_PULSO_MAX:120}
+    presion-sistolica:
+      min: ${UMBRAL_SISTOLICA_MIN:90}
+      max: ${UMBRAL_SISTOLICA_MAX:140}
+    presion-diastolica:
+      min: ${UMBRAL_DIASTOLICA_MIN:60}
+      max: ${UMBRAL_DIASTOLICA_MAX:90}
+    temperatura:
+      min: ${UMBRAL_TEMPERATURA_MIN:35}
+      max: ${UMBRAL_TEMPERATURA_MAX:38}

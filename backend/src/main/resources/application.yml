@@ -1,0 +1,17 @@
+server:
+  port: ${PORT:8080}
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  graphql:
+    graphiql:
+      enabled: true
+services:
+  metricas: ${METRICAS_URL:http://localhost:8081}
+  alertas: ${ALERTAS_URL:http://localhost:8082}

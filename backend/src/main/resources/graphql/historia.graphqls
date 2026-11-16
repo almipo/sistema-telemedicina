@@ -1,0 +1,13 @@
+type Query {
+ historiaClinica(id: ID!): HistoriaClinica
+ historiasPaciente(pacienteId: ID!): [HistoriaClinica!]!
+}
+type HistoriaClinica {
+ id: ID!
+ pacienteId: ID!
+ estado: String!
+ notasMedicas: [String!]!
+ historialMedicacion: [String!]!
+ medicos: [Medico!]!
+}
+type Medico { id: ID! nombre: String! apellido: String! documento: String! matricula: String! especialidad: String! email: String! telefono: String }

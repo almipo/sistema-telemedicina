@@ -1,0 +1,18 @@
+server:
+  port: ${PORT:8082}
+spring:
+  application:
+    name: microservicio-alertas
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/telemedicina_dev}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+app:
+  alertas:
+    destinatario: ${ALERTAS_DESTINATARIO:PERSONAL_MEDICO}
+  websocket:
+    allowed-origin-patterns: ${WS_ALLOWED_ORIGINS:http://localhost:*,http://127.0.0.1:*}

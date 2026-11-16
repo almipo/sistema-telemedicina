@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports: ["127.0.0.1:5433:5432"]
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  mongodb:
+    image: mongo:7
+    command: ["mongod", "--auth"]
+    ports: ["127.0.0.1:27018:27017"]
+    volumes: ["mongo_data:/data/db"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  backend:
+    build: ./backend
+    ports: ["8080:8080"]
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      METRICAS_URL: http://metricas:8081
+      ALERTAS_URL: http://alertas:8082
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  alertas:
+    build: ./microservicio-alertas
+    ports: ["8082:8082"]
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  metricas:
+    build: ./microservicio-metricas
+    ports: ["8081:8081"]
+    environment:
+      MONGO_URI: ${MONGO_URI_DOCKER}
+      BACKEND_URL: http://backend:8080
+      ALERTAS_URL: http://alertas:8082
+    depends_on:
+      mongodb: {condition: service_healthy}
+      backend: {condition: service_started}
+      alertas: {condition: service_started}
+
+  frontend:
+    build: ./frontend
+    ports: ["3000:80"]
+    environment:
+      API_BASE_URL: ${FRONTEND_API_BASE_URL:-http://localhost:8080}
+      METRICAS_API_URL: ${FRONTEND_METRICAS_API_URL:-http://localhost:8081}
+      ALERTAS_API_URL: ${FRONTEND_ALERTAS_API_URL:-http://localhost:8082}
+      ALERTAS_WS_URL: ${FRONTEND_ALERTAS_WS_URL:-ws://localhost:8082/ws/alertas}
+    depends_on: [backend]
+
+volumes:
+  postgres_data:
+  mongo_data:

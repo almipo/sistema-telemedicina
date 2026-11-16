@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#163255">
+    <title>Panel de gestión médica</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+    <div class="brand"><span class="brand-icon">✚</span><span>Panel de gestión médica</span></div>
+    <div class="indicators"><span id="connection" class="status">Backend: comprobando</span><span id="ws-status"
+                                                                                                  class="status">Alertas: conectando</span>
+    </div>
+</header>
+<main>
+    <div class="hero">
+        <div><p class="eyebrow">GESTIÓN ASISTENCIAL</p>
+            <h1 id="page-heading">Inicio</h1>
+            <p id="page-description">Vista general del sistema de atención médica.</p></div>
+        <button id="refresh" class="secondary">Actualizar</button>
+    </div>
+    <nav id="tabs" aria-label="Secciones principales">
+        <button data-tab="inicio" class="active">Inicio</button>
+        <button data-tab="pacientes">Pacientes</button>
+        <button data-tab="medicos">Médicos</button>
+        <button data-tab="turnos">Turnos</button>
+        <button data-tab="umbrales">Umbrales</button>
+        <button data-tab="alertas">Alertas <span id="unread" class="unread" hidden></span></button>
+    </nav>
+    <div id="notice" role="status" aria-live="polite"></div>
+    <section id="home" class="home">
+        <div class="stats" id="stats"></div>
+        <div class="home-grid">
+            <section class="panel">
+                <div class="panel-head"><h2>Actividad asistencial</h2></div>
+                <div id="overview"></div>
+            </section>
+            <section class="panel">
+                <div class="panel-head"><h2>Alertas recientes</h2>
+                    <button id="view-alerts" class="secondary small">Ver todas</button>
+                </div>
+                <div id="recent-alerts"></div>
+            </section>
+        </div>
+    </section>
+    <section id="workspace" class="workspace" hidden>
+        <section class="panel editor">
+            <div class="panel-head"><h2 id="section-title"></h2></div>
+            <div id="form"></div>
+        </section>
+        <section class="panel records">
+            <div class="panel-head"><h2 id="list-title">Registros</h2><span id="record-count" class="muted"></span>
+            </div>
+            <div id="records"></div>
+        </section>
+    </section>
+    <section id="patient-view" hidden>
+        <div class="patient-head panel">
+            <div>
+                <button id="back-patients" class="link-button">← Volver a pacientes</button>
+                <h2 id="patient-name">Paciente</h2>
+                <p id="patient-info" class="muted"></p></div>
+            <span class="chip">Ficha clínica</span></div>
+        <div class="subtabs" id="patient-tabs">
+            <button data-patient-tab="general" class="active">Datos generales</button>
+            <button data-patient-tab="dispositivos">Dispositivos y mediciones</button>
+            <button data-patient-tab="historia">Historia clínica · Notas y medicación</button>
+            <button data-patient-tab="historial">Historial y alertas</button>
+            <button data-patient-tab="turnos">Turnos</button>
+        </div>
+        <div id="patient-content"></div>
+    </section>
+    <footer>Información médica de acceso restringido. Utilizar únicamente en entornos autorizados.</footer>
+</main>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
